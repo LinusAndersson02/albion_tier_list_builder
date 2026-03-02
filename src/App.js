@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import "./App.css";
+
+import Fuse from "fuse.js";
 
 import {
   DndContext,
@@ -21,7 +23,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 const TIERS = ["S", "A", "B", "C", "D"];
-const ALL_BUCKETS = ["POOL", ...TIERS];
 
 const SLOT_ORDER = [
   { key: "main", label: "Main / 2H" },
@@ -45,7 +46,6 @@ const SLOT_ID_RULES = {
   potion: /_POTION_/i,
 };
 
-// render service doesn't need @ encoded; keep @ as-is
 function iconUrl(identifier, size = 64) {
   if (!identifier) return "";
   const encoded = encodeURIComponent(identifier.trim()).replace(/%40/g, "@");
@@ -61,17 +61,72 @@ function parseItemsTxt(text) {
     if (!idMatch) continue;
 
     const id = idMatch[0];
+
+    const tierMatch = id.match(/^T(\d+)_/i);
+    const tier = tierMatch ? Number(tierMatch[1]) : null;
+
+    const enchantMatch = id.match(/@(\d+)\b/);
+    const enchant = enchantMatch ? Number(enchantMatch[1]) : 0;
+
     const parts = line.split(":");
     const name = (parts.length >= 2 ? parts[parts.length - 1] : id).trim() || id;
 
-    items.push({ id, name });
+    items.push({ id, name, tier, enchant });
   }
+
   return items;
+}
+
+
+function parseTierEnchant(raw) {
+  let q = raw.trim().toLowerCase();
+  let tier = null;
+  let enchant = null;
+
+  // Matches: "7.2" or "t7.2" or "7@2" or "t7@2"
+  const m = q.match(/(?:^|\s)t?(\d{1,2})\s*[.@]\s*(\d)(?:\s|$)/);
+  if (m) {
+    tier = Number(m[1]);
+    enchant = Number(m[2]);
+    q = q.replace(m[0], " ");
+  }
+
+  // Matches: "t7" or " 7 " (tier only)
+  const t = q.match(/(?:^|\s)t(\d{1,2})(?:\s|$)/);
+  if (t) {
+    tier = Number(t[1]);
+    q = q.replace(t[0], " ");
+  } else {
+    const t2 = q.match(/(?:^|\s)(\d{1,2})(?:\s|$)/);
+    if (t2) {
+      tier = Number(t2[1]);
+      q = q.replace(t2[0], " ");
+    }
+  }
+
+  // Matches: "@2" enchant only
+  const e = q.match(/@(\d)(?:\s|$)/);
+  if (e) {
+    enchant = Number(e[1]);
+    q = q.replace(e[0], " ");
+  }
+
+  const text = q.replace(/\s+/g, " ").trim();
+  return { text, tier, enchant };
 }
 
 function ItemPicker({ label, items, value, onChange }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const inputRef = useRef(null);
+
+  const fuse = useMemo(() => {
+    return new Fuse(items, {
+      keys: ["name", "id"],
+      threshold: 0.38,
+      ignoreLocation: true,
+    });
+  }, [items]);
 
   useEffect(() => {
     if (!value) {
@@ -79,16 +134,51 @@ function ItemPicker({ label, items, value, onChange }) {
       return;
     }
     const found = items.find((x) => x.id === value);
-    setQuery(found ? `${found.name} (${found.id})` : value);
+    setQuery(found ? found.name : "");
   }, [value, items]);
 
   const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items.slice(0, 20);
-    return items
-      .filter((x) => x.id.toLowerCase().includes(q) || x.name.toLowerCase().includes(q))
-      .slice(0, 20);
-  }, [query, items]);
+    const { text, tier, enchant } = parseTierEnchant(query);
+
+    // Start from fuzzy results (or all items if no text)
+    let base = text
+      ? fuse.search(text).map((r) => r.item)
+      : items;
+
+    // Filter by tier/enchant if provided
+    let filtered = base;
+    if (tier != null) filtered = filtered.filter((x) => x.tier === tier);
+    if (enchant != null) filtered = filtered.filter((x) => x.enchant === enchant);
+
+    // If no exact enchant matches, fall back to ignoring enchant (still tier+text filtered)
+    if (filtered.length === 0 && enchant != null) {
+      filtered = base;
+      if (tier != null) filtered = filtered.filter((x) => x.tier === tier);
+    }
+
+    // If fuse returns nothing (rare), fallback to contains
+    if (text && base.length === 0) {
+      const t = text.toLowerCase();
+      filtered = items.filter(
+        (x) => x.name.toLowerCase().includes(t) || x.id.toLowerCase().includes(t)
+      );
+      if (tier != null) filtered = filtered.filter((x) => x.tier === tier);
+      if (enchant != null) filtered = filtered.filter((x) => x.enchant === enchant);
+    }
+
+    return filtered.slice(0, 30);
+  }, [query, fuse, items]);
+
+  function handleSelect(item) {
+    onChange(item.id);
+
+    // Show confirmed name, and CLOSE dropdown immediately
+    setQuery(item.name);
+    setOpen(false);
+
+    // Blur to prevent it reopening instantly
+    setTimeout(() => inputRef.current?.blur(), 0);
+  }
 
   return (
     <div className="Picker">
@@ -96,9 +186,10 @@ function ItemPicker({ label, items, value, onChange }) {
 
       <div className="PickerRow">
         <input
+          ref={inputRef}
           className="PickerInput"
           value={query}
-          placeholder={`Search ${label}…`}
+          placeholder={`Search ${label}… (e.g. "incubus 7.2")`}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
@@ -106,6 +197,7 @@ function ItemPicker({ label, items, value, onChange }) {
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
         />
+
         {value ? (
           <button
             className="Btn BtnGhost"
@@ -117,36 +209,46 @@ function ItemPicker({ label, items, value, onChange }) {
         ) : null}
       </div>
 
-      {open && matches.length > 0 ? (
-        <div className="PickerDropdown">
-          {matches.map((m) => (
-            <button
-              key={m.id}
-              className="PickerOption"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onChange(m.id)}
-              title={m.id}
-            >
-              <img className="Icon" src={iconUrl(m.id, 48)} alt="" loading="lazy" />
-              <div className="PickerOptionText">
-                <div className="PickerOptionName">{m.name}</div>
-                <div className="PickerOptionId">{m.id}</div>
-              </div>
-            </button>
-          ))}
-        </div>
+      {open ? (
+        matches.length > 0 ? (
+          <div className="PickerDropdown">
+            {matches.map((m) => (
+              <button
+                key={m.id}
+                className="PickerOption"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSelect(m)}
+                title={m.id}
+              >
+                <img className="Icon" src={iconUrl(m.id, 48)} alt="" loading="lazy" />
+                <div className="PickerOptionText">
+                  <div className="PickerOptionName">{m.name}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="PickerDropdown">
+            <div style={{ padding: 10, color: "rgba(255,255,255,0.6)" }}>No matches.</div>
+          </div>
+        )
       ) : null}
     </div>
   );
 }
 
-function BuildStrip({ build, showDelete, onRemove }) {
+function BuildStrip({ build, showDelete, onRemove, className = "" }) {
   return (
-    <div className="BuildStrip">
+    <div className={`BuildStrip ${className}`}>
       {SLOT_ORDER.map((s) => (
         <div key={s.key} className="Slot" title={s.label}>
           {build.slots[s.key] ? (
-            <img className="Icon" src={iconUrl(build.slots[s.key], 64)} alt={s.label} loading="lazy" />
+            <img
+              className="Icon"
+              src={iconUrl(build.slots[s.key], 64)}
+              alt={s.label}
+              loading="lazy"
+            />
           ) : (
             <div className="SlotEmpty">{s.label}</div>
           )}
@@ -170,7 +272,7 @@ function SortableBuild({ build, onRemove }) {
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.45 : 1,
   };
 
   return (
@@ -190,13 +292,14 @@ function TierDropZone({ tierId, children }) {
 }
 
 export default function App() {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // “Better” dnd: avoid accidental drags + feels smoother
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   // items
   const [allItems, setAllItems] = useState([]);
   const [itemsError, setItemsError] = useState("");
 
-  // build form (no name, no tier dropdown; always goes into POOL)
+  // build form (defaults to S)
   const [buildForm, setBuildForm] = useState({
     slots: {
       main: "",
@@ -212,26 +315,23 @@ export default function App() {
 
   // state: builds map + tier arrays
   const [buildsById, setBuildsById] = useState({});
-  const [tierBuildIds, setTierBuildIds] = useState(() => {
-    // init with empty structure
-    const base = Object.fromEntries(ALL_BUCKETS.map((t) => [t, []]));
-    return base;
-  });
+  const [tierBuildIds, setTierBuildIds] = useState(() =>
+    Object.fromEntries(TIERS.map((t) => [t, []]))
+  );
 
-  // Drag overlay current build id
   const [activeId, setActiveId] = useState(null);
 
   // Load saved
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("tierlist_state_v2");
+      const raw = localStorage.getItem("tierlist_state_v3");
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed?.buildsById && parsed?.tierBuildIds) {
         setBuildsById(parsed.buildsById);
-        // ensure missing tiers exist
-        const base = Object.fromEntries(ALL_BUCKETS.map((t) => [t, []]));
-        for (const t of ALL_BUCKETS) base[t] = parsed.tierBuildIds[t] || [];
+
+        const base = Object.fromEntries(TIERS.map((t) => [t, []]));
+        for (const t of TIERS) base[t] = parsed.tierBuildIds[t] || [];
         setTierBuildIds(base);
       }
     } catch {
@@ -241,7 +341,7 @@ export default function App() {
 
   // Save
   useEffect(() => {
-    localStorage.setItem("tierlist_state_v2", JSON.stringify({ buildsById, tierBuildIds }));
+    localStorage.setItem("tierlist_state_v3", JSON.stringify({ buildsById, tierBuildIds }));
   }, [buildsById, tierBuildIds]);
 
   // Load items file
@@ -280,9 +380,8 @@ export default function App() {
     const build = { id, slots: { ...buildForm.slots } };
 
     setBuildsById((prev) => ({ ...prev, [id]: build }));
-    setTierBuildIds((prev) => ({ ...prev, POOL: [id, ...prev.POOL] }));
+    setTierBuildIds((prev) => ({ ...prev, S: [id, ...prev.S] })); // default to S
 
-    // reset
     setBuildForm({
       slots: { main: "", off: "", head: "", armor: "", shoes: "", cape: "", food: "", potion: "" },
     });
@@ -296,15 +395,15 @@ export default function App() {
     });
     setTierBuildIds((prev) => {
       const next = {};
-      for (const t of ALL_BUCKETS) next[t] = prev[t].filter((x) => x !== id);
+      for (const t of TIERS) next[t] = prev[t].filter((x) => x !== id);
       return next;
     });
   }
 
   function findContainer(id) {
     if (!id) return null;
-    if (ALL_BUCKETS.includes(id)) return id;
-    for (const t of ALL_BUCKETS) {
+    if (TIERS.includes(id)) return id;
+    for (const t of TIERS) {
       if (tierBuildIds[t].includes(id)) return t;
     }
     return null;
@@ -314,31 +413,17 @@ export default function App() {
     setActiveId(event.active.id);
   }
 
-  function handleDragEnd(event) {
+  // Better feel: while dragging, moving across tiers updates immediately (no “snap only on drop”)
+  function handleDragOver(event) {
     const { active, over } = event;
-    setActiveId(null);
-
     if (!over) return;
 
     const activeContainer = findContainer(active.id);
     const overContainer = findContainer(over.id);
 
     if (!activeContainer || !overContainer) return;
+    if (activeContainer === overContainer) return;
 
-    if (activeContainer === overContainer) {
-      // reorder within same tier
-      const oldIndex = tierBuildIds[activeContainer].indexOf(active.id);
-      const newIndex = tierBuildIds[overContainer].indexOf(over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      setTierBuildIds((prev) => ({
-        ...prev,
-        [activeContainer]: arrayMove(prev[activeContainer], oldIndex, newIndex),
-      }));
-      return;
-    }
-
-    // move to a different tier
     setTierBuildIds((prev) => {
       const from = prev[activeContainer];
       const to = prev[overContainer];
@@ -348,12 +433,12 @@ export default function App() {
 
       const nextFrom = from.filter((x) => x !== active.id);
 
-      // If "over" is a tier container id, drop at end
-      const overIsContainer = ALL_BUCKETS.includes(over.id);
-      const toIndex = overIsContainer ? to.length : to.indexOf(over.id);
+      // if hovering a tier label/empty zone, drop at end
+      const overIsTier = TIERS.includes(over.id);
+      const toIndex = overIsTier ? to.length : to.indexOf(over.id);
+      const insertAt = toIndex < 0 ? to.length : toIndex;
 
-      const insertIndex = toIndex < 0 ? to.length : toIndex;
-      const nextTo = [...to.slice(0, insertIndex), active.id, ...to.slice(insertIndex)];
+      const nextTo = [...to.slice(0, insertAt), active.id, ...to.slice(insertAt)];
 
       return {
         ...prev,
@@ -363,11 +448,36 @@ export default function App() {
     });
   }
 
+  function handleDragEnd(event) {
+    const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
+
+    const activeContainer = findContainer(active.id);
+    const overContainer = findContainer(over.id);
+    if (!activeContainer || !overContainer) return;
+
+    // reorder within same tier
+    if (activeContainer === overContainer) {
+      const oldIndex = tierBuildIds[activeContainer].indexOf(active.id);
+      const newIndex = tierBuildIds[overContainer].indexOf(over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      setTierBuildIds((prev) => ({
+        ...prev,
+        [activeContainer]: arrayMove(prev[activeContainer], oldIndex, newIndex),
+      }));
+    }
+  }
+
   return (
     <div className="AppShell">
       <header className="Header">
-        <div className="HeaderTitle">Albion Tier List Builder</div>
-        <div className="HeaderSub">Drag builds between POOL, S, A, B, C, D.</div>
+        <div>
+          <div className="HeaderTitle">Albion Tier List Builder</div>
+          <div className="HeaderSub">Create builds → they start in S → drag between tiers.</div>
+        </div>
+
       </header>
 
       <main className="Main">
@@ -385,7 +495,7 @@ export default function App() {
 
           <div className="FormRowSimple">
             <button className="Btn BtnPrimary" onClick={addBuild} disabled={!buildForm.slots.main}>
-              Add build to Pool
+              Add build to S
             </button>
 
             <div className="BuildPreview">
@@ -410,14 +520,13 @@ export default function App() {
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <section className="TierBoard">
-            {ALL_BUCKETS.map((tier) => (
+          <section className="TierBoard" id="tierboard-capture">
+            {TIERS.map((tier) => (
               <div key={tier} className="TierRow">
-                <div className={`TierLabel ${tier === "POOL" ? "TierLabelPool" : `TierLabel${tier}`}`}>
-                  {tier}
-                </div>
+                <div className={`TierLabel TierLabel${tier}`}>{tier}</div>
 
                 <TierDropZone tierId={tier}>
                   <SortableContext items={tierBuildIds[tier]} strategy={rectSortingStrategy}>
@@ -427,9 +536,7 @@ export default function App() {
                   </SortableContext>
 
                   {tierBuildIds[tier].length === 0 ? (
-                    <div className="TierEmpty">
-                      {tier === "POOL" ? "Add a build, then drag it to a tier." : "Drop builds here."}
-                    </div>
+                    <div className="TierEmpty">Drop builds here.</div>
                   ) : null}
                 </TierDropZone>
               </div>
@@ -437,7 +544,7 @@ export default function App() {
           </section>
 
           <DragOverlay>
-            {activeBuild ? <BuildStrip build={activeBuild} showDelete={false} /> : null}
+            {activeBuild ? <BuildStrip build={activeBuild} showDelete={false} className="OverlayBuild" /> : null}
           </DragOverlay>
         </DndContext>
       </main>

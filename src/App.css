@@ -12,9 +12,15 @@
 body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
 
 .AppShell { min-height: 100vh; }
+
+/* header now supports button on right */
 .Header {
   padding: 18px 18px 10px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
 }
 .HeaderTitle { font-size: 20px; font-weight: 700; }
 .HeaderSub { margin-top: 6px; color: var(--muted); font-size: 13px; }
@@ -127,7 +133,6 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 .PickerOption:hover { background: rgba(255,255,255,0.06); }
 .PickerOptionText { min-width: 0; }
 .PickerOptionName { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.PickerOptionId { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Tier board */
 .TierBoard { display: grid; gap: 10px; }
@@ -150,7 +155,6 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   border-right: 1px solid var(--border);
 }
 
-.TierLabelPool { background: rgba(255,255,255,0.05); }
 .TierLabelS { background: rgba(255, 80, 80, 0.22); }
 .TierLabelA { background: rgba(255, 170, 80, 0.20); }
 .TierLabelB { background: rgba(255, 235, 120, 0.16); }
@@ -162,7 +166,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   padding: 10px;
   display: flex;
   gap: 10px;
-  flex-wrap: wrap; /* tiers grow as builds increase */
+  flex-wrap: wrap;
   align-items: flex-start;
   min-height: 86px;
 }
@@ -186,8 +190,19 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   background: rgba(255,255,255,0.03);
   cursor: grab;
   user-select: none;
+  touch-action: none;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.BuildStrip:hover {
+  box-shadow: 0 10px 22px rgba(0,0,0,0.35);
+  background: rgba(255,255,255,0.05);
 }
 .BuildStrip:active { cursor: grabbing; }
+
+.OverlayBuild {
+  transform: scale(1.03);
+  box-shadow: 0 14px 30px rgba(0,0,0,0.45);
+}
 
 .BuildDelete {
   position: absolute;
