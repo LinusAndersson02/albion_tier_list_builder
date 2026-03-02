@@ -1,6 +1,25 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  useDroppable,
+} from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+
+import { CSS } from "@dnd-kit/utilities";
+
 const TIERS = ["S", "A", "B", "C", "D"];
 const ALL_BUCKETS = ["POOL", ...TIERS];
 
@@ -15,7 +34,6 @@ const SLOT_ORDER = [
   { key: "potion", label: "Potion" },
 ];
 
-// Match by UNIQUE ID patterns from your file (e.g. T6_MAIN_..., T6_2H_..., etc.)
 const SLOT_ID_RULES = {
   main: /_MAIN_|_2H_/i,
   off: /_OFF_/i,
@@ -27,9 +45,10 @@ const SLOT_ID_RULES = {
   potion: /_POTION_/i,
 };
 
+// render service doesn't need @ encoded; keep @ as-is
 function iconUrl(identifier, size = 64) {
   if (!identifier) return "";
-  const encoded = encodeURIComponent(identifier.trim());
+  const encoded = encodeURIComponent(identifier.trim()).replace(/%40/g, "@");
   return `https://render.albiononline.com/v1/item/${encoded}.png?locale=en&size=${size}`;
 }
 
@@ -38,19 +57,15 @@ function parseItemsTxt(text) {
   const lines = text.split(/\r?\n/);
 
   for (const line of lines) {
-    // Grab the first unique-id token that starts with T<number>_
     const idMatch = line.match(/\bT\d+_[A-Z0-9_]+(?:@\d+)?\b/);
     if (!idMatch) continue;
 
     const id = idMatch[0];
-
-    // Name is usually after the last colon
     const parts = line.split(":");
     const name = (parts.length >= 2 ? parts[parts.length - 1] : id).trim() || id;
 
     items.push({ id, name });
   }
-
   return items;
 }
 
@@ -58,7 +73,6 @@ function ItemPicker({ label, items, value, onChange }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
 
-  // Keep input readable when value changes externally
   useEffect(() => {
     if (!value) {
       setQuery("");
@@ -79,6 +93,7 @@ function ItemPicker({ label, items, value, onChange }) {
   return (
     <div className="Picker">
       <div className="PickerLabel">{label}</div>
+
       <div className="PickerRow">
         <input
           className="PickerInput"
@@ -89,13 +104,14 @@ function ItemPicker({ label, items, value, onChange }) {
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => {
-            // Small delay so click can register
-            setTimeout(() => setOpen(false), 120);
-          }}
+          onBlur={() => setTimeout(() => setOpen(false), 120)}
         />
         {value ? (
-          <button className="Btn BtnGhost" onMouseDown={(e) => e.preventDefault()} onClick={() => onChange("")}>
+          <button
+            className="Btn BtnGhost"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onChange("")}
+          >
             Clear
           </button>
         ) : null}
@@ -124,53 +140,64 @@ function ItemPicker({ label, items, value, onChange }) {
   );
 }
 
-function BuildCard({ build, onTierChange, onRemove }) {
+function BuildStrip({ build, showDelete, onRemove }) {
   return (
-    <div className="BuildCard">
-      <div className="BuildTop">
-        <div className="BuildTitle">{build.title || "Untitled Build"}</div>
-        <select
-          className="TierSelect"
-          value={build.tier}
-          onChange={(e) => onTierChange(build.id, e.target.value)}
-          title="Move build to tier"
-        >
-          <option value="POOL">Pool</option>
-          {TIERS.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <button className="Btn BtnDanger" onClick={() => onRemove(build.id)} title="Delete build">
+    <div className="BuildStrip">
+      {SLOT_ORDER.map((s) => (
+        <div key={s.key} className="Slot" title={s.label}>
+          {build.slots[s.key] ? (
+            <img className="Icon" src={iconUrl(build.slots[s.key], 64)} alt={s.label} loading="lazy" />
+          ) : (
+            <div className="SlotEmpty">{s.label}</div>
+          )}
+        </div>
+      ))}
+
+      {showDelete ? (
+        <button className="BuildDelete" onClick={() => onRemove(build.id)} title="Delete build">
           ✕
         </button>
-      </div>
+      ) : null}
+    </div>
+  );
+}
 
-      <div className="BuildRow" title="Main/2H, Off, Helmet, Armor, Boots, Cape, Food, Potion">
-        {SLOT_ORDER.map((s) => (
-          <div key={s.key} className="Slot">
-            {build.slots[s.key] ? (
-              <img className="Icon" src={iconUrl(build.slots[s.key], 64)} alt={s.label} loading="lazy" />
-            ) : (
-              <div className="SlotEmpty" title={s.label}>
-                {s.label}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+function SortableBuild({ build, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: build.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <BuildStrip build={build} showDelete onRemove={onRemove} />
+    </div>
+  );
+}
+
+function TierDropZone({ tierId, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id: tierId });
+  return (
+    <div ref={setNodeRef} className={`TierBuilds ${isOver ? "TierBuildsOver" : ""}`}>
+      {children}
     </div>
   );
 }
 
 export default function App() {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // items
   const [allItems, setAllItems] = useState([]);
   const [itemsError, setItemsError] = useState("");
 
+  // build form (no name, no tier dropdown; always goes into POOL)
   const [buildForm, setBuildForm] = useState({
-    title: "",
-    tier: "POOL",
     slots: {
       main: "",
       off: "",
@@ -183,19 +210,41 @@ export default function App() {
     },
   });
 
-  const [builds, setBuilds] = useState(() => {
-    try {
-      const raw = localStorage.getItem("tierlist_builds_v1");
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+  // state: builds map + tier arrays
+  const [buildsById, setBuildsById] = useState({});
+  const [tierBuildIds, setTierBuildIds] = useState(() => {
+    // init with empty structure
+    const base = Object.fromEntries(ALL_BUCKETS.map((t) => [t, []]));
+    return base;
   });
 
-  useEffect(() => {
-    localStorage.setItem("tierlist_builds_v1", JSON.stringify(builds));
-  }, [builds]);
+  // Drag overlay current build id
+  const [activeId, setActiveId] = useState(null);
 
+  // Load saved
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("tierlist_state_v2");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.buildsById && parsed?.tierBuildIds) {
+        setBuildsById(parsed.buildsById);
+        // ensure missing tiers exist
+        const base = Object.fromEntries(ALL_BUCKETS.map((t) => [t, []]));
+        for (const t of ALL_BUCKETS) base[t] = parsed.tierBuildIds[t] || [];
+        setTierBuildIds(base);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Save
+  useEffect(() => {
+    localStorage.setItem("tierlist_state_v2", JSON.stringify({ buildsById, tierBuildIds }));
+  }, [buildsById, tierBuildIds]);
+
+  // Load items file
   useEffect(() => {
     fetch("/items.txt")
       .then((r) => {
@@ -215,41 +264,7 @@ export default function App() {
     return bySlot;
   }, [allItems]);
 
-  const grouped = useMemo(() => {
-    const g = Object.fromEntries(ALL_BUCKETS.map((b) => [b, []]));
-    for (const b of builds) g[b.tier]?.push(b);
-    return g;
-  }, [builds]);
-
-  function addBuild() {
-    // Require at least a main/2h to avoid empty spam
-    if (!buildForm.slots.main) return;
-
-    const newBuild = {
-      id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      title: buildForm.title.trim(),
-      tier: buildForm.tier,
-      slots: { ...buildForm.slots },
-    };
-
-    setBuilds((prev) => [newBuild, ...prev]);
-
-    setBuildForm((prev) => ({
-      ...prev,
-      title: "",
-      tier: "POOL",
-      slots: {
-        main: "",
-        off: "",
-        head: "",
-        armor: "",
-        shoes: "",
-        cape: "",
-        food: "",
-        potion: "",
-      },
-    }));
-  }
+  const activeBuild = activeId ? buildsById[activeId] : null;
 
   function setSlot(slotKey, itemId) {
     setBuildForm((prev) => ({
@@ -258,21 +273,101 @@ export default function App() {
     }));
   }
 
-  function setBuildTier(buildId, tier) {
-    setBuilds((prev) => prev.map((b) => (b.id === buildId ? { ...b, tier } : b)));
+  function addBuild() {
+    if (!buildForm.slots.main) return;
+
+    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const build = { id, slots: { ...buildForm.slots } };
+
+    setBuildsById((prev) => ({ ...prev, [id]: build }));
+    setTierBuildIds((prev) => ({ ...prev, POOL: [id, ...prev.POOL] }));
+
+    // reset
+    setBuildForm({
+      slots: { main: "", off: "", head: "", armor: "", shoes: "", cape: "", food: "", potion: "" },
+    });
   }
 
-  function removeBuild(buildId) {
-    setBuilds((prev) => prev.filter((b) => b.id !== buildId));
+  function removeBuild(id) {
+    setBuildsById((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+    setTierBuildIds((prev) => {
+      const next = {};
+      for (const t of ALL_BUCKETS) next[t] = prev[t].filter((x) => x !== id);
+      return next;
+    });
+  }
+
+  function findContainer(id) {
+    if (!id) return null;
+    if (ALL_BUCKETS.includes(id)) return id;
+    for (const t of ALL_BUCKETS) {
+      if (tierBuildIds[t].includes(id)) return t;
+    }
+    return null;
+  }
+
+  function handleDragStart(event) {
+    setActiveId(event.active.id);
+  }
+
+  function handleDragEnd(event) {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    const activeContainer = findContainer(active.id);
+    const overContainer = findContainer(over.id);
+
+    if (!activeContainer || !overContainer) return;
+
+    if (activeContainer === overContainer) {
+      // reorder within same tier
+      const oldIndex = tierBuildIds[activeContainer].indexOf(active.id);
+      const newIndex = tierBuildIds[overContainer].indexOf(over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      setTierBuildIds((prev) => ({
+        ...prev,
+        [activeContainer]: arrayMove(prev[activeContainer], oldIndex, newIndex),
+      }));
+      return;
+    }
+
+    // move to a different tier
+    setTierBuildIds((prev) => {
+      const from = prev[activeContainer];
+      const to = prev[overContainer];
+
+      const fromIndex = from.indexOf(active.id);
+      if (fromIndex === -1) return prev;
+
+      const nextFrom = from.filter((x) => x !== active.id);
+
+      // If "over" is a tier container id, drop at end
+      const overIsContainer = ALL_BUCKETS.includes(over.id);
+      const toIndex = overIsContainer ? to.length : to.indexOf(over.id);
+
+      const insertIndex = toIndex < 0 ? to.length : toIndex;
+      const nextTo = [...to.slice(0, insertIndex), active.id, ...to.slice(insertIndex)];
+
+      return {
+        ...prev,
+        [activeContainer]: nextFrom,
+        [overContainer]: nextTo,
+      };
+    });
   }
 
   return (
     <div className="AppShell">
       <header className="Header">
         <div className="HeaderTitle">Albion Tier List Builder</div>
-        <div className="HeaderSub">
-          Builds render horizontally; tier rows grow automatically as they fill.
-        </div>
+        <div className="HeaderSub">Drag builds between POOL, S, A, B, C, D.</div>
       </header>
 
       <main className="Main">
@@ -288,36 +383,14 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="FormRow">
-            <label className="Field">
-              <div className="FieldLabel">Build name (optional)</div>
-              <input
-                className="TextInput"
-                value={buildForm.title}
-                onChange={(e) => setBuildForm((p) => ({ ...p, title: e.target.value }))}
-                placeholder="e.g. Greataxe PvE"
-              />
-            </label>
-
-            <label className="Field">
-              <div className="FieldLabel">Start in tier</div>
-              <select
-                className="TextInput"
-                value={buildForm.tier}
-                onChange={(e) => setBuildForm((p) => ({ ...p, tier: e.target.value }))}
-              >
-                <option value="POOL">Pool</option>
-                {TIERS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </label>
-
+          <div className="FormRowSimple">
             <button className="Btn BtnPrimary" onClick={addBuild} disabled={!buildForm.slots.main}>
-              Add build
+              Add build to Pool
             </button>
+
+            <div className="BuildPreview">
+              <BuildStrip build={{ id: "preview", slots: buildForm.slots }} showDelete={false} />
+            </div>
           </div>
 
           <div className="PickersGrid">
@@ -331,48 +404,42 @@ export default function App() {
               />
             ))}
           </div>
+        </section>
 
-          <div className="PreviewRow">
-            <div className="PreviewLabel">Preview</div>
-            <div className="BuildRow">
-              {SLOT_ORDER.map((s) => (
-                <div key={s.key} className="Slot">
-                  {buildForm.slots[s.key] ? (
-                    <img className="Icon" src={iconUrl(buildForm.slots[s.key], 64)} alt={s.label} loading="lazy" />
-                  ) : (
-                    <div className="SlotEmpty">{s.label}</div>
-                  )}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <section className="TierBoard">
+            {ALL_BUCKETS.map((tier) => (
+              <div key={tier} className="TierRow">
+                <div className={`TierLabel ${tier === "POOL" ? "TierLabelPool" : `TierLabel${tier}`}`}>
+                  {tier}
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
-        <section className="TierBoard">
-          {/* Pool */}
-          <div className="TierRow">
-            <div className="TierLabel TierLabelPool">POOL</div>
-            <div className="TierBuilds">
-              {grouped.POOL.map((b) => (
-                <BuildCard key={b.id} build={b} onTierChange={setBuildTier} onRemove={removeBuild} />
-              ))}
-              {grouped.POOL.length === 0 ? <div className="TierEmpty">No builds yet.</div> : null}
-            </div>
-          </div>
+                <TierDropZone tierId={tier}>
+                  <SortableContext items={tierBuildIds[tier]} strategy={rectSortingStrategy}>
+                    {tierBuildIds[tier].map((id) => (
+                      <SortableBuild key={id} build={buildsById[id]} onRemove={removeBuild} />
+                    ))}
+                  </SortableContext>
 
-          {/* Tiers */}
-          {TIERS.map((tier) => (
-            <div key={tier} className="TierRow">
-              <div className={`TierLabel TierLabel${tier}`}>{tier}</div>
-              <div className="TierBuilds">
-                {grouped[tier].map((b) => (
-                  <BuildCard key={b.id} build={b} onTierChange={setBuildTier} onRemove={removeBuild} />
-                ))}
-                {grouped[tier].length === 0 ? <div className="TierEmpty">Drop builds here by selecting tier.</div> : null}
+                  {tierBuildIds[tier].length === 0 ? (
+                    <div className="TierEmpty">
+                      {tier === "POOL" ? "Add a build, then drag it to a tier." : "Drop builds here."}
+                    </div>
+                  ) : null}
+                </TierDropZone>
               </div>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+
+          <DragOverlay>
+            {activeBuild ? <BuildStrip build={activeBuild} showDelete={false} /> : null}
+          </DragOverlay>
+        </DndContext>
       </main>
     </div>
   );

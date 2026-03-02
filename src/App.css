@@ -46,27 +46,6 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 }
 .Hint { margin-top: 6px; color: var(--muted); font-size: 13px; }
 
-.FormRow {
-  display: grid;
-  grid-template-columns: 1fr 180px 140px;
-  gap: 10px;
-  align-items: end;
-  margin-bottom: 10px;
-}
-
-.FieldLabel { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-
-.TextInput {
-  width: 100%;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 10px 10px;
-  border-radius: 10px;
-  outline: none;
-}
-.TextInput:focus { border-color: rgba(120, 180, 255, 0.35); }
-
 .Btn {
   border: 1px solid var(--border);
   background: rgba(255,255,255,0.05);
@@ -78,7 +57,22 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 .Btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .BtnPrimary { background: rgba(120, 180, 255, 0.18); }
 .BtnGhost { background: transparent; }
-.BtnDanger { background: rgba(255, 60, 60, 0.12); }
+
+.FormRowSimple {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.BuildPreview {
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+}
 
 .PickersGrid {
   display: grid;
@@ -86,6 +80,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   gap: 10px;
 }
 
+/* Picker */
 .Picker {
   position: relative;
   padding: 10px;
@@ -94,7 +89,6 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   background: rgba(255,255,255,0.03);
 }
 .PickerLabel { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-
 .PickerRow { display: flex; gap: 8px; align-items: center; }
 .PickerInput {
   flex: 1;
@@ -135,13 +129,8 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 .PickerOptionName { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .PickerOptionId { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.PreviewRow { margin-top: 10px; }
-.PreviewLabel { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-
-.TierBoard {
-  display: grid;
-  gap: 10px;
-}
+/* Tier board */
+.TierBoard { display: grid; gap: 10px; }
 
 .TierRow {
   display: flex;
@@ -173,50 +162,47 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   padding: 10px;
   display: flex;
   gap: 10px;
-  flex-wrap: wrap; /* <-- this is what makes the tier "scale" with more builds */
+  flex-wrap: wrap; /* tiers grow as builds increase */
   align-items: flex-start;
   min-height: 86px;
 }
 
+.TierBuildsOver {
+  outline: 2px dashed rgba(120, 180, 255, 0.35);
+  outline-offset: -6px;
+}
+
 .TierEmpty { color: var(--muted); font-size: 13px; padding: 10px 6px; }
 
-.BuildCard {
-  width: 420px;
-  border: 1px solid var(--border);
+/* Clean build strip */
+.BuildStrip {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
   border-radius: 12px;
-  background: rgba(255,255,255,0.03);
-  padding: 10px;
-}
-
-.BuildTop {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.BuildTitle {
-  font-weight: 750;
-  font-size: 13px;
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.TierSelect {
-  background: rgba(0,0,0,0.15);
   border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 8px;
-  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  cursor: grab;
+  user-select: none;
 }
+.BuildStrip:active { cursor: grabbing; }
 
-.BuildRow {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: nowrap;
+.BuildDelete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 60, 60, 0.12);
+  color: var(--text);
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: none;
 }
+.BuildStrip:hover .BuildDelete { display: inline-grid; place-items: center; }
 
 .Slot {
   width: 48px;
