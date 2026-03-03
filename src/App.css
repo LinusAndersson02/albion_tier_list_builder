@@ -9,21 +9,14 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
 
 .AppShell { min-height: 100vh; }
-
-/* header now supports button on right */
-.Header {
-  padding: 18px 18px 10px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-}
-.HeaderTitle { font-size: 20px; font-weight: 700; }
-.HeaderSub { margin-top: 6px; color: var(--muted); font-size: 13px; }
 
 .Main {
   display: grid;
@@ -41,7 +34,21 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   box-shadow: var(--shadow);
 }
 
-.CardTitle { font-weight: 700; margin-bottom: 10px; }
+.CardHeaderRow{
+  display:flex;
+  justify-content: space-between;
+  align-items:flex-start;
+  gap: 12px;
+}
+.CardTitle { font-weight: 800; margin-bottom: 6px; }
+.CardSub { color: var(--muted); font-size: 13px; }
+
+.TopActions{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 
 .Error {
   background: rgba(255, 40, 40, 0.1);
@@ -66,15 +73,15 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 
 .FormRowSimple {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 220px 1fr;
   gap: 10px;
   align-items: center;
-  margin-bottom: 10px;
+  margin: 10px 0 12px;
 }
 
 .BuildPreview {
   overflow: auto;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: rgba(255,255,255,0.03);
@@ -131,8 +138,42 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   text-align: left;
 }
 .PickerOption:hover { background: rgba(255,255,255,0.06); }
-.PickerOptionText { min-width: 0; }
-.PickerOptionName { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.PickerOptionName {
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.PickerIcon{
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+}
+
+/* Ability editor under pickers */
+.AbilityEditorRow{
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.AbilityEditorLabel{
+  font-size: 12px;
+  color: var(--muted);
+}
+.AbilityEditorInput{
+  background: rgba(0,0,0,0.15);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 10px;
+  outline: none;
+}
+.AbilityEditorInput:disabled{
+  opacity: 0.55;
+}
 
 /* Tier board */
 .TierBoard { display: grid; gap: 10px; }
@@ -163,12 +204,12 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 
 .TierBuilds {
   flex: 1;
-  padding: 10px;
+  padding: 12px;
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   align-items: flex-start;
-  min-height: 86px;
+  min-height: 110px;
 }
 
 .TierBuildsOver {
@@ -178,60 +219,74 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 
 .TierEmpty { color: var(--muted); font-size: 13px; padding: 10px 6px; }
 
-/* Clean build strip */
+.TierRowS { background: #ff4d4d33; }
+.TierRowA { background: #ff944d33; }
+.TierRowB { background: #ffd24d33; }
+.TierRowC { background: #4dff8844; }
+.TierRowD { background: #4da6ff33; }
+
+/* Build strip */
 .BuildStrip {
   position: relative;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 8px;
-  border-radius: 12px;
+  padding: 6px;
+  border-radius: 14px;
   border: 1px solid var(--border);
-  background: rgba(255,255,255,0.03);
-  cursor: grab;
+  background: rgba(255,255,255,0.04);
   user-select: none;
   touch-action: none;
   transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
 }
+
 .BuildStrip:hover {
   box-shadow: 0 10px 22px rgba(0,0,0,0.35);
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.07);
 }
-.BuildStrip:active { cursor: grabbing; }
+
+.BuildStripSelected{
+  outline: 2px solid rgba(120, 180, 255, 0.75);
+  box-shadow: 0 0 0 4px rgba(120, 180, 255, 0.18);
+}
 
 .OverlayBuild {
   transform: scale(1.03);
   box-shadow: 0 14px 30px rgba(0,0,0,0.45);
 }
 
-.BuildDelete {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  border: 1px solid var(--border);
-  background: rgba(255, 60, 60, 0.12);
-  color: var(--text);
-  width: 26px;
-  height: 26px;
-  border-radius: 9px;
-  cursor: pointer;
-  display: none;
-}
-.BuildStrip:hover .BuildDelete { display: inline-grid; place-items: center; }
-
-.Slot {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
+/* Drag handle */
+.DragHandle{
+  width: 22px;
+  height: 70px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(0,0,0,0.12);
+  background: rgba(0,0,0,0.22);
+  color: rgba(255,255,255,0.7);
+  cursor: grab;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.DragHandle:active{ cursor: grabbing; }
+.DragHandle:hover{ background: rgba(255,255,255,0.08); }
+
+/* Slots */
+.Slot {
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.16);
+  position: relative;
+  overflow: hidden;
 }
 
 .Icon {
-  width: 44px;
-  height: 44px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
 }
 
@@ -239,5 +294,64 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   font-size: 10px;
   color: rgba(255,255,255,0.45);
   text-align: center;
-  padding: 6px;
+  padding: 4px;
+}
+
+/* Ability pills under icon (only shows when there are tokens) */
+.AbilityPillRow{
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.AbilityPill{
+  width: 24px;              /* ✅ fixed width looks good with 1–3 pills */
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.35);
+  color: rgba(255,255,255,0.9);
+}
+
+/* action buttons */
+.BuildActions{
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 6px;
+}
+.BuildStrip:hover .BuildActions{
+  display:flex;
+}
+
+.ActionBtn{
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.45);
+  color: var(--text);
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+.ActionBtn:hover{
+  background: rgba(255,255,255,0.10);
+}
+.ActionBtnDanger{
+  background: rgba(255, 60, 60, 0.18);
+}
+.ActionBtnDanger:hover{
+  background: rgba(255, 60, 60, 0.28);
 }
